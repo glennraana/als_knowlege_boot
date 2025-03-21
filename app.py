@@ -81,6 +81,10 @@ if "rag_initialized" not in st.session_state:
     st.session_state.rag_initialized = False
     st.session_state.rag_error = None
 
+# Initialize embedding_function in session state
+if "embedding_function" not in st.session_state:
+    st.session_state.embedding_function = None
+
 # Initialize MongoDB vector index (with error handling)
 try:
     create_vector_search_index()
