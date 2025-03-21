@@ -8,7 +8,7 @@ python-dotenv==1.0.1
 pydantic==2.6.3
 openai==1.12.0
 langchain-openai==0.0.8
-langchain-community==0.0.19
+langchain-community==0.0.25
 beautifulsoup4==4.12.3
 requests==2.31.0
 pandas==2.0.3
