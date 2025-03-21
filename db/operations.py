@@ -3,8 +3,8 @@ Database operations module for user contributions
 """
 
 import pymongo
-from pymongo.bson.binary import Binary
-from pymongo.bson.objectid import ObjectId
+from pymongo import Binary
+from pymongo import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from db.connection import get_database, get_gridfs, get_mongodb_uri
 import hashlib

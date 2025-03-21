@@ -33,7 +33,7 @@ for doc in docs:
     file_id_str = doc.get('file_id')
     if file_id_str:
         try:
-            from pymongo.bson.objectid import ObjectId
+            from pymongo import ObjectId
             file_id = ObjectId(file_id_str)
             
             # Sjekk om filen finnes i GridFS

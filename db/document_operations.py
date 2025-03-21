@@ -1,15 +1,14 @@
 """
-Database operations for document management system.
+Database operations module for document processing
 """
 
-import os
-from typing import List, Dict, Any, Optional, BinaryIO
+from db.connection import get_database, get_gridfs
+from pymongo import ObjectId
 import gridfs
-from pymongo.bson.objectid import ObjectId
-from pymongo import ASCENDING, DESCENDING
+from typing import List, Dict, Any, Optional, BinaryIO
+import os
 from datetime import datetime
 
-from db.connection import get_database
 from db.document_models import Document, Folder
 from document_processor.processor import process_text, process_pdf, process_image, process_url
 from rag.vectorstore import add_texts_to_vectorstore
@@ -18,7 +17,7 @@ from rag.vectorstore import add_texts_to_vectorstore
 db = get_database()
 documents_collection = db["documents"]
 folders_collection = db["folders"]
-fs = gridfs.GridFS(db)
+fs = get_gridfs()
 
 def save_document(document: Document, file_content: bytes) -> str:
     """
