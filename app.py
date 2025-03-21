@@ -28,7 +28,7 @@ if hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
 # Importerer MongoDB-relaterte pakker
 try:
     import gridfs
-    from pymongo import ObjectId
+    from bson import ObjectId
 except ImportError as e:
     st.error(f"Failed to import MongoDB-related packages: {e}")
     raise

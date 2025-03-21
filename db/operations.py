@@ -4,7 +4,7 @@ Database operations module for user contributions
 
 import pymongo
 from pymongo import Binary
-from pymongo import ObjectId
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from db.connection import get_database, get_gridfs, get_mongodb_uri
 import hashlib

@@ -3,7 +3,7 @@ Database operations module for document processing
 """
 
 from db.connection import get_database, get_gridfs
-from pymongo import ObjectId
+from bson import ObjectId
 import gridfs
 from typing import List, Dict, Any, Optional, BinaryIO
 import os
