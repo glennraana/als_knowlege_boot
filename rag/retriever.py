@@ -7,6 +7,22 @@ from dotenv import load_dotenv
 import openai
 from openai import OpenAI
 
+# Patch for OpenAI client to fix TypeError with 'proxies' parameter
+import importlib
+if hasattr(openai, '_base_client'):
+    base_client = importlib.import_module('openai._base_client')
+    if hasattr(base_client, 'SyncHttpxClientWrapper'):
+        orig_init = base_client.SyncHttpxClientWrapper.__init__
+        
+        def patched_init(self, *args, **kwargs):
+            # Remove problematic proxies parameter if it exists
+            if 'proxies' in kwargs:
+                del kwargs['proxies']
+            return orig_init(self, *args, **kwargs)
+        
+        base_client.SyncHttpxClientWrapper.__init__ = patched_init
+        logging.info("Successfully patched OpenAI client to handle proxy issues")
+
 # Importer streamlit for secrets håndtering
 try:
     import streamlit as st
@@ -33,16 +49,10 @@ def get_openai_client():
             st.error(error_msg)
         raise ValueError(error_msg)
     
-    # Opprett en OpenAI klient uten ekstra parametere som kan skape problemer
-    try:
-        # Prøv først med standard konfigurasjon
-        return OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    except TypeError as e:
-        # Hvis det er argument-problemer, logg det og prøv en enklere konfigurasjon
-        logging.warning(f"Error creating OpenAI client with standard config: {e}")
-        # Import direkte for å sikre vi bruker korrekt klasse
-        from openai import OpenAI as DirectOpenAI
-        return DirectOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    # Opprett OpenAI klient med bare de nødvendige parametrene
+    api_key = os.environ.get("OPENAI_API_KEY")
+    client = OpenAI(api_key=api_key)
+    return client
 
 class SimpleRetriever:
     """Simple retriever that uses a vector store"""
