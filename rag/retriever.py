@@ -127,17 +127,24 @@ class CustomRAGChain:
         self.vectorstore = retriever.vectorstore
         self.llm = self.client
     
-    def invoke(self, query: str) -> Dict[str, Any]:
+    def invoke(self, query):
         """
         Invoke the RAG chain
         
         Args:
-            query: The user query
+            query: The user query or a dict with an "input" key containing the query
             
         Returns:
             Dict with answer and source documents
         """
-        sanitized_query = query.strip()
+        # Handle both string and dictionary inputs
+        if isinstance(query, dict) and "input" in query:
+            sanitized_query = query["input"].strip()
+        elif isinstance(query, str):
+            sanitized_query = query.strip()
+        else:
+            return {"answer": "Forespørselen din må være en tekst eller en dictionary med en 'input' nøkkel.", "docs": []}
+        
         logging.info(f"RAG Chain invoked with query: '{sanitized_query}'")
         
         if not sanitized_query:
