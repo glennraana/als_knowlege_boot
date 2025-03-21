@@ -348,15 +348,13 @@ if page == "Chat":
     def initialize_rag():
         try:
             print("Initializing RAG components...")
-            # Get embeddings model
-            embeddings = get_embeddings()
-            print(f"Embeddings model initialized: {type(embeddings).__name__}")
+            # Get embeddings function
+            embedding_function = get_embeddings()
+            print(f"Embeddings function initialized")
             
-            # Initialize retriever
-            retriever = get_retriever(embeddings, k=10)
-            print("Retriever initialized")
+            # No need to initialize retriever here as we've removed langchain
             
-            return embeddings, None
+            return embedding_function, None
         except Exception as e:
             error_details = traceback.format_exc()
             error_msg = f"Feil ved initialisering av kunnskapsbasen: {str(e)}\n{error_details}"
@@ -366,9 +364,9 @@ if page == "Chat":
     # Initialize components if not already done
     if not st.session_state.rag_initialized:
         with st.spinner("Initialiserer kunnskapsbasen... Vennligst vent."):
-            embeddings, error_msg = initialize_rag()
-            if embeddings:
-                st.session_state.embeddings = embeddings
+            embedding_function, error_msg = initialize_rag()
+            if embedding_function:
+                st.session_state.embedding_function = embedding_function
                 st.session_state.rag_initialized = True
                 print("RAG system initialized successfully")
             else:
@@ -410,8 +408,8 @@ if page == "Chat":
             with st.spinner("Tenker..."):
                 try:
                     # Opprett ny retriever og chain for hver spørring
-                    embeddings = st.session_state.embeddings
-                    retriever = get_retriever(embeddings, k=20)
+                    embedding_function = st.session_state.embedding_function
+                    retriever = get_retriever(embedding_function, k=20)
                     chain = get_rag_chain(retriever)
                     
                     # Generate response
@@ -708,8 +706,8 @@ elif page == "Bidra med kunnskap":
                 
                 # Add to vector store
                 try:
-                    if 'embeddings' in st.session_state:
-                        add_texts_to_vectorstore(texts, metadatas, st.session_state.embeddings)
+                    if 'embedding_function' in st.session_state:
+                        add_texts_to_vectorstore(texts, metadatas, st.session_state.embedding_function)
                     st.success("Takk for ditt bidrag! Din kunnskap vil hjelpe andre med ALS.")
                     st.balloons()
                 except Exception as e:
@@ -764,8 +762,8 @@ elif page == "Bidra med kunnskap":
                 
                 # Add to vector store
                 try:
-                    if 'embeddings' in st.session_state:
-                        add_texts_to_vectorstore([combined_text], [metadata], st.session_state.embeddings)
+                    if 'embedding_function' in st.session_state:
+                        add_texts_to_vectorstore([combined_text], [metadata], st.session_state.embedding_function)
                     st.success("Takk for ditt bidrag! Din kunnskap vil hjelpe andre med ALS.")
                     st.balloons()
                 except Exception as e:

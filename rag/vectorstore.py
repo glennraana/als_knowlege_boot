@@ -1,15 +1,12 @@
 import os
-from typing import List, Dict, Any, Optional
-from langchain.vectorstores.base import VectorStore
-from langchain.embeddings.base import Embeddings
-from langchain.schema import Document
+from typing import List, Dict, Any, Optional, Callable
 from db.operations import embeddings_collection, save_vector_embedding, search_similar_embeddings, create_vector_search_index
 
-class MongoDBVectorStore(VectorStore):
-    """Custom MongoDB vector store implementation for LangChain"""
+class MongoDBVectorStore:
+    """Custom MongoDB vector store implementation"""
     
-    def __init__(self, embedding: Embeddings):
-        self.embedding = embedding
+    def __init__(self, embedding_function: Callable):
+        self.embedding_function = embedding_function
     
     def add_texts(
         self, 
@@ -36,26 +33,23 @@ class MongoDBVectorStore(VectorStore):
             raise ValueError("Number of metadatas must match number of texts")
         
         try:
-            # Embed texts
-            embeddings = self.embedding.embed_documents(texts)
-            
-            # Save to MongoDB
+            # Embed texts one by one using our embedding function
             ids = []
-            for text, embedding, metadata in zip(texts, embeddings, metadatas):
+            for text, metadata in zip(texts, metadatas):
                 try:
+                    # Generate embedding for the text
+                    embedding = self.embedding_function(text)
+                    
+                    # Save to MongoDB
                     doc_id = save_vector_embedding(text, embedding, metadata)
                     ids.append(doc_id)
                 except Exception as e:
                     print(f"Error saving vector embedding: {e}")
                     # Continue with the next item instead of failing completely
             
-            if not ids:
-                print("Warning: No documents were successfully saved to the vector store")
-            
             return ids
         except Exception as e:
             print(f"Error in add_texts: {e}")
-            # Return empty list instead of raising exception
             return []
     
     def similarity_search(
@@ -63,88 +57,59 @@ class MongoDBVectorStore(VectorStore):
         query: str, 
         k: int = 4,
         **kwargs: Any,
-    ) -> List[Document]:
+    ) -> List[Dict]:
         """
-        Find similar documents to the query string
+        Search for documents similar to the query string
         
         Args:
             query: Query string
             k: Number of documents to return
             
         Returns:
-            List of documents most similar to the query
+            List of documents with similarity scores
         """
         try:
             # Generate embedding for the query
-            query_embedding = self.embedding.embed_query(query)
+            query_embedding = self.embedding_function(query)
             
-            # Search for similar embeddings
-            results = search_similar_embeddings(query_embedding, n_results=k)
+            # Search MongoDB for similar embeddings
+            results = search_similar_embeddings(query_embedding, k)
             
-            # Convert results to LangChain Documents
+            # Convert to Document objects
             documents = []
             for result in results:
-                documents.append(
-                    Document(
-                        page_content=result["text"],
-                        metadata=result["metadata"]
-                    )
-                )
+                documents.append({
+                    "page_content": result["text"],
+                    "metadata": result["metadata"]
+                })
             
             return documents
         except Exception as e:
             print(f"Error in similarity_search: {e}")
-            # Return empty list instead of raising exception
             return []
-    
-    @classmethod
-    def from_texts(
-        cls,
-        texts: List[str],
-        embedding: Embeddings,
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        **kwargs: Any,
-    ) -> "MongoDBVectorStore":
-        """
-        Create a vector store from texts
-        
-        Args:
-            texts: List of text strings to embed and store
-            embedding: Embedding model to use for encoding text
-            metadatas: Metadata for each text (optional)
-            
-        Returns:
-            A MongoDBVectorStore instance
-        """
-        # Create instance
-        instance = cls(embedding)
-        
-        # Add texts
-        if texts:
-            instance.add_texts(texts, metadatas)
-        
-        return instance
 
-def get_vectorstore(embeddings: Embeddings):
+def get_vectorstore(embedding_function: Callable):
     """
-    Initialize and return a MongoDB vector store instance
-    that integrates with langchain for document retrieval.
+    Initialize and return a MongoDB vector store instance.
     
     Args:
-        embeddings: Embedding model to use for encoding text
+        embedding_function: Function that generates embeddings for text
         
     Returns:
         A configured vector store instance
     """
-    # Create the vector store
-    vector_store = MongoDBVectorStore(embeddings)
+    # Ensure the vector search index exists
+    try:
+        create_vector_search_index()
+    except Exception as e:
+        print(f"Warning: Could not create vector search index: {e}")
     
-    return vector_store
+    return MongoDBVectorStore(embedding_function)
 
 def add_texts_to_vectorstore(
     texts: List[str],
     metadatas: List[Dict[str, Any]],
-    embeddings: Embeddings
+    embedding_function: Callable
 ):
     """
     Add texts and their embeddings to the vector store
@@ -152,12 +117,7 @@ def add_texts_to_vectorstore(
     Args:
         texts: List of text strings to embed and store
         metadatas: Metadata for each text
-        embeddings: Embedding model to use
+        embedding_function: Function that generates embeddings for text
     """
-    # Get vector store
-    vector_store = get_vectorstore(embeddings)
-    
-    # Add texts
-    doc_ids = vector_store.add_texts(texts=texts, metadatas=metadatas)
-    
-    return doc_ids
+    vectorstore = get_vectorstore(embedding_function)
+    return vectorstore.add_texts(texts, metadatas)
