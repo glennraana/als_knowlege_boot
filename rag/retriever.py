@@ -13,13 +13,20 @@ import io
 import re
 from dotenv import load_dotenv
 
+# Importer streamlit for secrets håndtering
+try:
+    import streamlit as st
+    has_streamlit = True
+except ImportError:
+    has_streamlit = False
+
 # Load environment variables
 load_dotenv()
 
-# Debugging for OpenAI API key
-api_key = os.environ.get("OPENAI_API_KEY", "")
-print(f"API key loaded (first 5 chars): {api_key[:5] if api_key else 'None'}")
-print(f"API key length: {len(api_key) if api_key else 0}")
+# Hent API-nøkkel fra Streamlit secrets hvis tilgjengelig
+if has_streamlit and hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
+    os.environ['OPENAI_API_KEY'] = st.secrets['OPENAI_API_KEY']
+    logging.info("Using OpenAI API key from Streamlit secrets")
 
 def get_llm(use_for="chat"):
     """
@@ -31,11 +38,13 @@ def get_llm(use_for="chat"):
     Returns:
         A ChatOpenAI instance.
     """
-    # Bruk miljøvariabelen fra .env
-    # IKKE hardkode API-nøkler her
-    
+    # Sjekk om API-nøkkelen finnes
     if not os.environ.get("OPENAI_API_KEY"):
-        raise ValueError("OPENAI_API_KEY not found in environment variables.")
+        error_msg = "OPENAI_API_KEY not found in environment variables or Streamlit secrets."
+        if has_streamlit:
+            st.error(error_msg)
+        raise ValueError(error_msg)
+        
     if use_for == "chat":
         # Use GPT-4o for chat responses
         return ChatOpenAI(

@@ -10,14 +10,28 @@ import traceback
 import json
 import base64
 from io import BytesIO
-import gridfs
 import uuid
 import tempfile
-from bson import ObjectId
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
 import re
+
+# Konfigurer miljøvariabler
+load_dotenv()
+
+# Sett API-nøkkel fra Streamlit secrets eller miljøvariabler
+if hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
+    os.environ['OPENAI_API_KEY'] = st.secrets['OPENAI_API_KEY']
+    print("Using OpenAI API key from Streamlit secrets")
+
+# Importerer MongoDB-relaterte pakker
+try:
+    import gridfs
+    from bson import ObjectId
+except ImportError as e:
+    st.error(f"Failed to import MongoDB-related packages: {e}")
+    raise
 
 # Import project components
 from rag.embeddings import get_embeddings
