@@ -15,46 +15,101 @@ class MongoDBVectorStore:
     
     def add_texts(
         self, 
-        texts: List[str], 
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        **kwargs: Any,
+        texts: List[str],
+        metadatas: Optional[List[Dict[str, Any]]] = None
     ) -> List[str]:
         """
         Add texts to the vector store
         
         Args:
             texts: List of text strings to embed and store
-            metadatas: Metadata for each text (optional)
+            metadatas: Metadata for each text
             
         Returns:
-            List of document IDs
+            List of IDs for the stored texts
         """
-        # Process metadatas
+        import logging
+        
+        if not texts:
+            logging.warning("No texts to add to vector store")
+            return []
+        
+        # Ensure we have one metadata per text
         if metadatas is None:
             metadatas = [{} for _ in texts]
+        else:
+            if len(metadatas) != len(texts):
+                logging.warning(f"Metadata length {len(metadatas)} doesn't match texts length {len(texts)}")
+                # Pad with empty dicts if needed
+                if len(metadatas) < len(texts):
+                    metadatas.extend([{} for _ in range(len(texts) - len(metadatas))])
+                else:
+                    metadatas = metadatas[:len(texts)]
         
-        # Ensure metadatas and texts have the same length
-        if len(metadatas) != len(texts):
-            raise ValueError("Number of metadatas must match number of texts")
+        # Validate texts are not empty
+        valid_texts = []
+        valid_metadatas = []
+        for i, (text, metadata) in enumerate(zip(texts, metadatas)):
+            if not text or not isinstance(text, str):
+                logging.warning(f"Skipping invalid text at index {i}: {text}")
+                continue
+                
+            valid_texts.append(text)
+            valid_metadatas.append(metadata)
         
+        if not valid_texts:
+            logging.warning("No valid texts after filtering")
+            return []
+            
+        logging.info(f"Adding {len(valid_texts)} texts to vector store with metadata")
+        for i, (text, metadata) in enumerate(zip(valid_texts[:3], valid_metadatas[:3])):
+            logging.info(f"Sample text {i+1}: {text[:100]}...")
+            logging.info(f"Sample metadata {i+1}: {metadata}")
+            
+        # Create embeddings for the texts
         try:
-            # Embed texts one by one using our embedding function
-            ids = []
-            for text, metadata in zip(texts, metadatas):
+            embeddings = []
+            doc_ids = []
+            
+            for i, (text, metadata) in enumerate(zip(valid_texts, valid_metadatas)):
                 try:
-                    # Generate embedding for the text
+                    # Generate embedding
                     embedding = self.embedding_function(text)
                     
-                    # Save to MongoDB
-                    doc_id = embeddings_collection.insert_one({"text": text, "embedding": embedding, "metadata": metadata}).inserted_id
-                    ids.append(str(doc_id))
+                    # Store in MongoDB
+                    if embedding:
+                        try:
+                            # Make sure metadata is a proper dict
+                            if not isinstance(metadata, dict):
+                                logging.warning(f"Converting metadata to dict: {metadata}")
+                                metadata = {"source": str(metadata)}
+                                
+                            # Insert into collection
+                            doc_id = embeddings_collection.insert_one({
+                                "text": text, 
+                                "embedding": embedding, 
+                                "metadata": metadata
+                            }).inserted_id
+                            
+                            doc_ids.append(str(doc_id))
+                            logging.info(f"Added document {i+1}/{len(valid_texts)} with ID: {doc_id}")
+                        except Exception as e:
+                            logging.error(f"Error storing embedding {i}: {e}")
+                            import traceback
+                            logging.error(traceback.format_exc())
+                    else:
+                        logging.warning(f"Empty embedding generated for text {i+1}")
                 except Exception as e:
-                    print(f"Error saving vector embedding: {e}")
-                    # Continue with the next item instead of failing completely
-            
-            return ids
+                    logging.error(f"Error generating embedding for text {i+1}: {e}")
+                    import traceback
+                    logging.error(traceback.format_exc())
+                    
+            logging.info(f"Successfully added {len(doc_ids)}/{len(valid_texts)} texts to vector store")
+            return doc_ids
         except Exception as e:
-            print(f"Error in add_texts: {e}")
+            logging.error(f"Error in add_texts: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
             return []
     
     def similarity_search(

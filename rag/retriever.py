@@ -127,27 +127,53 @@ class CustomRAGChain:
     
     def _format_documents(self, docs):
         """
-        Format a list of documents into a context string
+        Format documents for the prompt
         
         Args:
             docs: List of documents
             
         Returns:
-            String containing the formatted context
+            Formatted string
         """
-        context = ""
-        for i, doc in enumerate(docs):
-            context += f"\nDocument {i+1}:\n"
-            context += f"Content: {doc.get('page_content', '')}\n"
+        if not docs:
+            return "Ingen relevante dokumenter funnet."
             
-            # Add metadata if available
-            metadata = doc.get('metadata', {})
-            if metadata:
-                context += "Metadata: "
-                context += ", ".join([f"{k}: {v}" for k, v in metadata.items()])
-                context += "\n"
+        formatted_docs = []
         
-        return context
+        for i, doc in enumerate(docs):
+            content = doc.get('page_content', 'Tomt dokument.')
+            metadata = doc.get('metadata', {})
+            
+            # Format metadata for better context
+            metadata_info = []
+            if metadata.get('kategori'):
+                metadata_info.append(f"Kategori: {metadata.get('kategori')}")
+            if metadata.get('innholdstype'):
+                metadata_info.append(f"Type: {metadata.get('innholdstype')}")
+            if metadata.get('title'):
+                metadata_info.append(f"Tittel: {metadata.get('title')}")
+            if metadata.get('tags'):
+                metadata_info.append(f"Tagger: {', '.join(metadata.get('tags'))}")
+            if metadata.get('opprettet_av'):
+                metadata_info.append(f"Forfatter: {metadata.get('opprettet_av')}")
+            if metadata.get('vanskelighetsgrad'):
+                metadata_info.append(f"Vanskelighetsgrad: {metadata.get('vanskelighetsgrad')}")
+            if metadata.get('score'):
+                metadata_info.append(f"Relevans: {metadata.get('score')}")
+                
+            # Format the document with numbered header and metadata
+            doc_header = f"DOKUMENT {i+1}"
+            if metadata_info:
+                doc_header += f" ({'; '.join(metadata_info)})"
+            
+            # Fremhev hvis dette er en personlig erfaring
+            if metadata.get('innholdstype') == 'personlig_erfaring':
+                doc_header = f"{doc_header} - PERSONLIG ERFARING"
+                
+            formatted_doc = f"{doc_header}:\n{content}\n"
+            formatted_docs.append(formatted_doc)
+            
+        return "\n\n".join(formatted_docs)
     
     def invoke(self, input_dict):
         """
@@ -176,7 +202,9 @@ class CustomRAGChain:
                 content = doc.get('page_content', '')[:100]  # Truncate to 100 chars
                 metadata = doc.get('metadata', {})
                 score = metadata.get('score', 'N/A')
-                logging.info(f"Document {i+1}: Score={score}, Content={content}...")
+                kategori = metadata.get('kategori', 'ukjent')
+                innholdstype = metadata.get('innholdstype', 'ukjent')
+                logging.info(f"Document {i+1}: Score={score}, Kategori={kategori}, Type={innholdstype}, Content={content}...")
             
             # Format documents as context
             context = self._format_documents(docs)
@@ -185,6 +213,12 @@ class CustomRAGChain:
             if not docs:
                 logging.warning("No relevant documents found for query, will use generic knowledge")
                 context = "Ingen relevante dokumenter funnet i kunnskapsbasen. Bruk din generelle kunnskap."
+            
+            # Sjekk om vi har personlige erfaringer i dokumentene
+            har_personlig_erfaring = any(
+                doc.get('metadata', {}).get('innholdstype') == 'personlig_erfaring' 
+                for doc in docs
+            )
             
             # Prepare the prompt for OpenAI
             prompt = f"""Du er en hjelpsom assistent som svarer på spørsmål om ALS (Amyotrofisk Lateral Sklerose) på norsk. 
@@ -204,6 +238,9 @@ VIKTIG:
 5. Vær ærlig om begrensningene i din kunnskap
 6. Hvis relevant dokumentasjon er tilgjengelig, henvis til den i svaret ditt
 7. Gi utfyllende og detaljerte svar basert på konteksten når relevant informasjon finnes
+8. Avslutt ALLTID svaret ditt med en henvisning til støttegruppen "Alltid litt sterkere" som en ressurs for ytterligere hjelp og støtte
+9. Hvis den tilgjengelige informasjonen inneholder personlige erfaringer, fremhev disse tydelig i svaret ditt
+10. Vær grundig og gi omfattende svar - ikke korte, generelle svar
 """
             
             try:
@@ -212,14 +249,19 @@ VIKTIG:
                 response = self.client.chat.completions.create(
                     model="gpt-4o",
                     messages=[
-                        {"role": "system", "content": "Du er en hjelpsom assistent for ALS-pasienter som svarer på norsk. Vær konkret, praktisk og empatisk."},
+                        {"role": "system", "content": "Du er en hjelpsom assistent for ALS-pasienter som svarer på norsk. Vær konkret, praktisk og empatisk. Gi alltid utfyllende og grundige svar. Henvis alltid til ALS-foreningen 'Alltid litt sterkere' når det er relevant."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
+                    max_tokens=2000  # Økt fra standard for å tillate mer omfattende svar
                 )
                 
                 answer = response.choices[0].message.content
                 logging.info(f"Generated response of length: {len(answer)}")
+                
+                # Sjekk om svaret inneholder referanse til "Alltid litt sterkere" - hvis ikke, legg til
+                if "Alltid litt sterkere" not in answer:
+                    answer += "\n\nFor ytterligere hjelp og støtte anbefaler jeg at du kontakter ALS-foreningen 'Alltid litt sterkere', som kan gi deg personlig veiledning og støtte i din situasjon."
                 
                 return {
                     "answer": answer,
