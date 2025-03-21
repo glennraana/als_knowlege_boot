@@ -163,14 +163,31 @@ class CustomRAGChain:
         if not query:
             return {"answer": "Ingen spørsmål ble gitt.", "source_documents": []}
         
+        import logging
+        logging.info(f"RAG chain invoked with query: {query}")
+        
         # Retrieve relevant documents
-        docs = self.retriever.get_relevant_documents(query)
-        
-        # Format documents as context
-        context = self._format_documents(docs)
-        
-        # Prepare the prompt for OpenAI
-        prompt = f"""Du er en hjelpsom assistent som svarer på spørsmål om ALS (Amyotrofisk Lateral Sklerose) på norsk. 
+        try:
+            docs = self.retriever.get_relevant_documents(query)
+            logging.info(f"Retrieved {len(docs)} relevant documents")
+            
+            # Log top documents for debugging
+            for i, doc in enumerate(docs[:3]):  # Only log first 3
+                content = doc.get('page_content', '')[:100]  # Truncate to 100 chars
+                metadata = doc.get('metadata', {})
+                score = metadata.get('score', 'N/A')
+                logging.info(f"Document {i+1}: Score={score}, Content={content}...")
+            
+            # Format documents as context
+            context = self._format_documents(docs)
+            
+            # If no relevant docs found, log it but continue with generic knowledge
+            if not docs:
+                logging.warning("No relevant documents found for query, will use generic knowledge")
+                context = "Ingen relevante dokumenter funnet i kunnskapsbasen. Bruk din generelle kunnskap."
+            
+            # Prepare the prompt for OpenAI
+            prompt = f"""Du er en hjelpsom assistent som svarer på spørsmål om ALS (Amyotrofisk Lateral Sklerose) på norsk. 
 Basert på følgende informasjon, besvar brukerens spørsmål så godt du kan. 
 Hvis informasjonen du har ikke er tilstrekkelig, si fra om det og gi ditt beste svar basert på din generelle kunnskap.
 
@@ -185,29 +202,44 @@ VIKTIG:
 3. Vær konkret og praktisk i dine svar
 4. Ta hensyn til at brukeren kan være en ALS-pasient eller pårørende
 5. Vær ærlig om begrensningene i din kunnskap
+6. Hvis relevant dokumentasjon er tilgjengelig, henvis til den i svaret ditt
+7. Gi utfyllende og detaljerte svar basert på konteksten når relevant informasjon finnes
 """
-        
-        try:
-            # Generate a response using OpenAI
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "Du er en hjelpsom assistent for ALS-pasienter som svarer på norsk. Vær konkret, praktisk og empatisk."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-            )
             
-            answer = response.choices[0].message.content
-            
-            return {
-                "answer": answer,
-                "source_documents": docs
-            }
+            try:
+                logging.info("Sending request to OpenAI...")
+                # Generate a response using OpenAI
+                response = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "Du er en hjelpsom assistent for ALS-pasienter som svarer på norsk. Vær konkret, praktisk og empatisk."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.7,
+                )
+                
+                answer = response.choices[0].message.content
+                logging.info(f"Generated response of length: {len(answer)}")
+                
+                return {
+                    "answer": answer,
+                    "source_documents": docs
+                }
+            except Exception as e:
+                error_msg = f"Feil ved generering av svar fra OpenAI: {str(e)}"
+                logging.error(error_msg)
+                import traceback
+                logging.error(traceback.format_exc())
+                return {
+                    "answer": f"Beklager, jeg kunne ikke generere et svar på grunn av en teknisk feil med OpenAI-tjenesten. {error_msg}",
+                    "source_documents": docs
+                }
         except Exception as e:
-            error_msg = f"Feil ved generering av svar: {str(e)}"
+            error_msg = f"Feil ved henting av relevante dokumenter: {str(e)}"
             logging.error(error_msg)
+            import traceback
+            logging.error(traceback.format_exc())
             return {
-                "answer": f"Beklager, jeg kunne ikke generere et svar på grunn av en teknisk feil. {error_msg}",
-                "source_documents": docs
+                "answer": f"Beklager, jeg kunne ikke søke i kunnskapsbasen på grunn av en teknisk feil. {error_msg}",
+                "source_documents": []
             }

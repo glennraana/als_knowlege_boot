@@ -160,7 +160,10 @@ st.markdown("""
     }
     .stTabs [data-baseweb="tab"] {
         padding: 8px 16px;
-        border-radius: 4px 4px 0 0;
+        border-radius: 4px;
+        font-weight: 500;
+        margin-bottom: 8px;
+        transition: all 0.3s;
     }
     .chat-message {
         padding: 1rem;
@@ -373,6 +376,43 @@ if page == "Chat":
                 st.session_state.embedding_function = embedding_function
                 st.session_state.rag_initialized = True
                 print("RAG system initialized successfully")
+                
+                # Legg til testdata i databasen for å sikre at RAG fungerer
+                try:
+                    print("Legger inn testdata i databasen...")
+                    from rag.vectorstore import add_texts_to_vectorstore
+                    
+                    test_texts = [
+                        "ALS (Amyotrofisk Lateral Sklerose) er en nervesykdom som angriper nervecellene i ryggmargen og hjernen. Dette fører til at musklene gradvis svekkes fordi nervecellene som styrer dem dør.",
+                        "Ernæring er en viktig del av behandlingen for ALS-pasienter. Det kan være utfordrende å få i seg nok næring når svelgefunksjonen svekkes. Kosttilskudd og tilpasset kost kan være nødvendig.",
+                        "Hjelpemidler som rullestol, ganghjelpemidler og kommunikasjonshjelpemidler kan øke livskvaliteten betydelig for ALS-pasienter.",
+                        "Fysioterapi og trening kan hjelpe med å opprettholde muskelfunksjon og bevegelighet hos ALS-pasienter så lenge som mulig.",
+                        "Respirasjonsstøtte er ofte nødvendig ved fremskreden ALS, dette kan inkludere ikke-invasiv ventilasjon (NIV) eller invasiv ventilasjon."
+                    ]
+                    
+                    test_metadata = [
+                        {"kategori": "helse", "innholdstype": "informasjon", "kilde": "testdata"},
+                        {"kategori": "ernæring", "innholdstype": "tips_og_triks", "kilde": "testdata"},
+                        {"kategori": "hjelpemidler", "innholdstype": "guide", "kilde": "testdata"},
+                        {"kategori": "mobilitet", "innholdstype": "anbefaling", "kilde": "testdata"},
+                        {"kategori": "respirasjon", "innholdstype": "informasjon", "kilde": "testdata"}
+                    ]
+                    
+                    # Sjekk om det allerede finnes dokumenter i databasen
+                    from rag.vectorstore import embeddings_collection
+                    doc_count = embeddings_collection.count_documents({})
+                    
+                    if doc_count == 0:
+                        print("Ingen dokumenter funnet i databasen, legger til testdokumenter...")
+                        ids = add_texts_to_vectorstore(test_texts, test_metadata, embedding_function)
+                        print(f"La til {len(ids)} testdokumenter i databasen med IDs: {ids}")
+                    else:
+                        print(f"Fant {doc_count} dokumenter i databasen, hopper over innlegging av testdata.")
+                    
+                except Exception as e:
+                    print(f"Feil ved innlegging av testdata: {str(e)}")
+                    import traceback
+                    print(traceback.format_exc())
             else:
                 st.session_state.rag_error = error_msg
                 st.error("Kunne ikke initialisere kunnskapsbasen.")
@@ -412,11 +452,28 @@ if page == "Chat":
             with st.spinner("Tenker..."):
                 try:
                     # Opprett ny retriever og chain for hver spørring
+                    print("Henter embedding funksjon fra session state...")
                     embedding_function = st.session_state.embedding_function
+                    
+                    # Test embedding function
+                    print("Tester embedding function...")
+                    test_embedding = embedding_function("Dette er en test")
+                    print(f"Test embedding generert med lengde: {len(test_embedding) if test_embedding else 'None'}")
+                    
+                    print("Oppretter retriever...")
                     retriever = get_retriever(embedding_function, k=20)
+                    
+                    print("Oppretter RAG chain...")
                     chain = get_rag_chain(retriever)
                     
+                    print(f"Henter relevante dokumenter for spørsmålet: {prompt}")
+                    relevant_docs = retriever.get_relevant_documents(prompt)
+                    print(f"Fant {len(relevant_docs)} relevante dokumenter")
+                    for i, doc in enumerate(relevant_docs[:3]):  # Vis bare de første 3
+                        print(f"Dokument {i+1}: {doc.get('page_content', '')[:100]}...")
+                    
                     # Generate response
+                    print("Genererer svar med RAG chain...")
                     response = chain.invoke({"input": prompt})
                     answer = response.get("answer", "Jeg kunne ikke generere et svar basert på tilgjengelig informasjon.")
                     
@@ -433,7 +490,9 @@ if page == "Chat":
                     error_msg = f"Det oppstod en feil: {str(e)}"
                     st.error(error_msg)
                     import traceback
-                    st.error(traceback.format_exc())
+                    error_trace = traceback.format_exc()
+                    print(f"Detaljert feilsporing: {error_trace}")
+                    st.error(error_trace)
                     
                     # Legg til feilmelding i chathistorikk
                     st.session_state.messages.append({
