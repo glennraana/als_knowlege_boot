@@ -5,7 +5,7 @@ Database operations for document management system.
 import os
 from typing import List, Dict, Any, Optional, BinaryIO
 import gridfs
-from bson.objectid import ObjectId
+from pymongo.bson.objectid import ObjectId
 from pymongo import ASCENDING, DESCENDING
 from datetime import datetime
 

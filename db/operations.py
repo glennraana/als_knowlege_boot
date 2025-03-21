@@ -1,40 +1,44 @@
-import os
-from pymongo import MongoClient
-from motor.motor_asyncio import AsyncIOMotorClient
-from bson.binary import Binary
-from typing import List, Dict, Any, Optional
-import gridfs
-from .models import Contribution, ContentTemplate
-import json
-import numpy as np
-from bson.objectid import ObjectId
-from dotenv import load_dotenv
+"""
+Database operations module for user contributions
+"""
 
-# Load environment variables
-load_dotenv()
+import pymongo
+from pymongo.bson.binary import Binary
+from pymongo.bson.objectid import ObjectId
+from motor.motor_asyncio import AsyncIOMotorClient
+from db.connection import get_database, get_gridfs, get_mongodb_uri
+import hashlib
+from typing import List, Dict, Any, Optional
+import logging
+import os
+from dotenv import load_dotenv
+import json
+from .models import Contribution, ContentTemplate
+
+# Load environment variables hvis ikke allerede lastet
+if 'MONGODB_URI' not in os.environ and 'OPENAI_API_KEY' not in os.environ:
+    load_dotenv()
 
 # MongoDB connection string from environment variables
-MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb+srv://Cluster80101:VXJYYkR6bFpL@cluster80101.oa4vk.mongodb.net/als_data?retryWrites=true&w=majority")
-DB_NAME = os.environ.get("MONGODB_DB_NAME", "als_knowledge")
+MONGODB_URI = get_mongodb_uri()
 
 # Print diagnostics
 print(f"Using MongoDB URI: {MONGODB_URI[:30]}...")
-print(f"Using database: {DB_NAME}")
 
 # Initialize MongoDB clients
-client = MongoClient(MONGODB_URI)
+client = pymongo.MongoClient(MONGODB_URI)
 async_client = AsyncIOMotorClient(MONGODB_URI)
 
 # Get database
-db = client[DB_NAME]
-async_db = async_client[DB_NAME]
+db = client[os.environ.get("MONGODB_DB_NAME", "als_knowledge")]
+async_db = async_client[os.environ.get("MONGODB_DB_NAME", "als_knowledge")]
 
 # Collections
 contributions_collection = db["contributions"]
 embeddings_collection = db["embeddings"]
 
 # GridFS for storing files
-fs = gridfs.GridFS(db)
+fs = get_gridfs()
 
 # Flag to track if Atlas Search is available
 HAS_VECTOR_SEARCH = False
