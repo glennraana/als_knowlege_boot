@@ -1,6 +1,11 @@
 import os
 from typing import List, Dict, Any, Optional, Callable
-from db.operations import embeddings_collection, save_vector_embedding, search_similar_embeddings, create_vector_search_index
+import pymongo
+from db.connection import get_database, get_gridfs, get_mongodb_uri
+
+# Definer nødvendige attributter her i stedet for å importere fra operations
+db = get_database()
+embeddings_collection = db["embeddings"]
 
 class MongoDBVectorStore:
     """Custom MongoDB vector store implementation"""
@@ -41,8 +46,8 @@ class MongoDBVectorStore:
                     embedding = self.embedding_function(text)
                     
                     # Save to MongoDB
-                    doc_id = save_vector_embedding(text, embedding, metadata)
-                    ids.append(doc_id)
+                    doc_id = embeddings_collection.insert_one({"text": text, "embedding": embedding, "metadata": metadata}).inserted_id
+                    ids.append(str(doc_id))
                 except Exception as e:
                     print(f"Error saving vector embedding: {e}")
                     # Continue with the next item instead of failing completely
@@ -73,7 +78,7 @@ class MongoDBVectorStore:
             query_embedding = self.embedding_function(query)
             
             # Search MongoDB for similar embeddings
-            results = search_similar_embeddings(query_embedding, k)
+            results = embeddings_collection.find({"embedding": {"$near": query_embedding}}).limit(k)
             
             # Convert to Document objects
             documents = []
@@ -100,7 +105,7 @@ def get_vectorstore(embedding_function: Callable):
     """
     # Ensure the vector search index exists
     try:
-        create_vector_search_index()
+        embeddings_collection.create_index([("embedding", pymongo.GEOSPHERE)])
     except Exception as e:
         print(f"Warning: Could not create vector search index: {e}")
     
