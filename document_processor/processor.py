@@ -3,9 +3,92 @@ from typing import List, Dict, Any, Optional
 import tempfile
 from PIL import Image
 import pytesseract
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 import io
+import re
+
+class SimpleTextSplitter:
+    """En enkel implementasjon av text splitter for å erstatte langchain avhengighet"""
+    
+    def __init__(self, chunk_size=1000, chunk_overlap=200, length_function=len):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.length_function = length_function
+    
+    def split_text(self, text: str) -> List[str]:
+        """
+        Del tekst inn i overlappende chunks av angitt størrelse
+        """
+        # Hvis teksten er kortere enn chunk_size, returner hele teksten
+        if self.length_function(text) <= self.chunk_size:
+            return [text]
+        
+        chunks = []
+        # Del teksten på avsnitt og setninger først
+        paragraphs = text.split("\n\n")
+        current_chunk = []
+        current_length = 0
+        
+        for paragraph in paragraphs:
+            # Del paragraf i setninger for mer presise chunks
+            sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+            
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if not sentence:
+                    continue
+                    
+                sentence_length = self.length_function(sentence)
+                
+                # Hvis en setning alene er større enn chunk_size, del den videre
+                if sentence_length > self.chunk_size:
+                    # Legg til eventuell eksisterende chunk først
+                    if current_chunk:
+                        chunks.append("".join(current_chunk).strip())
+                        
+                    # Del lang setning i mindre deler
+                    words = sentence.split()
+                    current_chunk = []
+                    current_length = 0
+                    
+                    for word in words:
+                        if current_length + len(word) + 1 > self.chunk_size:
+                            chunks.append("".join(current_chunk).strip())
+                            # Start ny chunk med overlap
+                            overlap_start = max(0, len(current_chunk) - self.chunk_overlap)
+                            current_chunk = current_chunk[overlap_start:]
+                            current_length = self.length_function("".join(current_chunk))
+                            
+                        current_chunk.append(word + " ")
+                        current_length += len(word) + 1
+                    
+                    if current_chunk:
+                        current_chunk_text = "".join(current_chunk).strip()
+                        chunks.append(current_chunk_text)
+                        # Start med et overlap for neste chunk
+                        words_overlap = current_chunk_text.split()[-min(len(current_chunk_text.split()), 
+                                                                      self.chunk_overlap//10)]
+                        current_chunk = [" ".join(words_overlap) + " "]
+                        current_length = self.length_function("".join(current_chunk))
+                else:
+                    # Hvis current_chunk + sentence er større enn chunk_size, avslutt current_chunk
+                    if current_length + sentence_length + 1 > self.chunk_size:
+                        chunks.append("".join(current_chunk).strip())
+                        # Start med et overlap for neste chunk
+                        overlap_words = min(10, len("".join(current_chunk).split()))
+                        overlap_text = " ".join("".join(current_chunk).split()[-overlap_words:])
+                        current_chunk = [overlap_text + " "]
+                        current_length = self.length_function("".join(current_chunk))
+                    
+                    # Legg til setningen i current_chunk
+                    current_chunk.append(sentence + " ")
+                    current_length += sentence_length + 1
+        
+        # Legg til gjenværende chunk hvis den ikke er tom
+        if current_chunk:
+            chunks.append("".join(current_chunk).strip())
+            
+        return chunks
 
 def process_text(text: str) -> List[str]:
     """
@@ -18,7 +101,7 @@ def process_text(text: str) -> List[str]:
         List of text chunks
     """
     # Create text splitter
-    text_splitter = RecursiveCharacterTextSplitter(
+    text_splitter = SimpleTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len,
