@@ -1,0 +1,8 @@
+# Set default behavior to automatically normalize line endings.
+* text=auto
+
+# Python files
+*.py text diff=python
+
+# Deny files from showing up in GitHub language statistics
+*.ipynb linguist-documentation
