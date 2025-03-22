@@ -20,6 +20,20 @@ import re
 # Konfigurer miljøvariabler
 load_dotenv()
 
+# Sett opp custom CSS for bedre mobilopplevelse
+def local_css(file_name):
+    try:
+        with open(file_name) as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    except Exception as e:
+        print(f"Kunne ikke laste CSS-fil: {e}")
+
+# Last inn tilpasset CSS hvis filen eksisterer
+try:
+    local_css(".streamlit/style.css")
+except:
+    print("CSS-fil ikke funnet. Bruker standard Streamlit-styling.")
+
 # Sett API-nøkkel fra Streamlit secrets eller miljøvariabler
 if hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
     os.environ['OPENAI_API_KEY'] = st.secrets['OPENAI_API_KEY']
@@ -225,6 +239,62 @@ st.markdown("""
     button[kind="secondary"] {
         color: #ffffff !important;
     }
+    
+    /* Bidrag-grid */
+    .contribution-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1rem;
+    }
+    .card {
+        background-color: #f0f0f0;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+    }
+    .card.type-personlig_erfaring {
+        border-left: 4px solid #4F6CDE;
+    }
+    .card.type-guide {
+        border-left: 4px solid #2D5738;
+    }
+    .card.type-tips_og_triks {
+        border-left: 4px solid #6B9E78;
+    }
+    .card.type-forskning {
+        border-left: 4px solid #8B9467;
+    }
+    .category-chip {
+        font-size: 0.8rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .category-annet {
+        background-color: #cccccc;
+        color: #666;
+    }
+    .category-helse {
+        background-color: #4F6CDE;
+        color: white;
+    }
+    .category-ernæring {
+        background-color: #2D5738;
+        color: white;
+    }
+    .category-hjelpemidler {
+        background-color: #6B9E78;
+        color: white;
+    }
+    .category-mobilitet {
+        background-color: #8B9467;
+        color: white;
+    }
+    .category-respirasjon {
+        background-color: #FFC107;
+        color: white;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -350,155 +420,81 @@ with st.sidebar:
 page = st.session_state.page
 
 if page == "Chat":
-    # Initialize RAG components
-    @st.cache_resource
-    def initialize_rag():
-        try:
-            print("Initializing RAG components...")
-            # Get embeddings function
-            embedding_function = get_embeddings()
-            print(f"Embeddings function initialized")
-            
-            # No need to initialize retriever here as we've removed langchain
-            
-            return embedding_function, None
-        except Exception as e:
-            error_details = traceback.format_exc()
-            error_msg = f"Feil ved initialisering av kunnskapsbasen: {str(e)}\n{error_details}"
-            print(error_msg)
-            return None, error_msg
-
+    st.header("ALS Kunnskapsassistent")
+    
+    # Mobiloptimalisert introduksjon - kompakt på små skjermer
+    with st.container():
+        st.markdown("""
+        <div class="chat-intro">
+            <p>Hei! Jeg er ALS-kunnskapsassistenten. Jeg kan hjelpe deg med informasjon om ALS, hjelpemidler, 
+            forskning, ernæring og mye mer.</p>
+            <p>Still meg gjerne et spørsmål!</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
     # Initialize components if not already done
     if not st.session_state.rag_initialized:
         with st.spinner("Initialiserer kunnskapsbasen... Vennligst vent."):
             embedding_function, error_msg = initialize_rag()
-            if embedding_function:
-                st.session_state.embedding_function = embedding_function
+            
+            if error_msg:
+                st.error(f"Kunne ikke initialisere kunnskapsbasen: {error_msg}")
+                st.stop()  # Bruk st.stop() i stedet for return
+            
+            # Get RAG components
+            try:
+                vectorstore = get_vectorstore(embedding_function)
+                retriever = get_retriever(vectorstore)
+                st.session_state.rag_chain = get_rag_chain(retriever)
                 st.session_state.rag_initialized = True
-                print("RAG system initialized successfully")
-                
-                # Legg til testdata i databasen for å sikre at RAG fungerer
-                try:
-                    print("Legger inn testdata i databasen...")
-                    from rag.vectorstore import add_texts_to_vectorstore
-                    
-                    test_texts = [
-                        "ALS (Amyotrofisk Lateral Sklerose) er en nervesykdom som angriper nervecellene i ryggmargen og hjernen. Dette fører til at musklene gradvis svekkes fordi nervecellene som styrer dem dør.",
-                        "Ernæring er en viktig del av behandlingen for ALS-pasienter. Det kan være utfordrende å få i seg nok næring når svelgefunksjonen svekkes. Kosttilskudd og tilpasset kost kan være nødvendig.",
-                        "Hjelpemidler som rullestol, ganghjelpemidler og kommunikasjonshjelpemidler kan øke livskvaliteten betydelig for ALS-pasienter.",
-                        "Fysioterapi og trening kan hjelpe med å opprettholde muskelfunksjon og bevegelighet hos ALS-pasienter så lenge som mulig.",
-                        "Respirasjonsstøtte er ofte nødvendig ved fremskreden ALS, dette kan inkludere ikke-invasiv ventilasjon (NIV) eller invasiv ventilasjon."
-                    ]
-                    
-                    test_metadata = [
-                        {"kategori": "helse", "innholdstype": "informasjon", "kilde": "testdata"},
-                        {"kategori": "ernæring", "innholdstype": "tips_og_triks", "kilde": "testdata"},
-                        {"kategori": "hjelpemidler", "innholdstype": "guide", "kilde": "testdata"},
-                        {"kategori": "mobilitet", "innholdstype": "anbefaling", "kilde": "testdata"},
-                        {"kategori": "respirasjon", "innholdstype": "informasjon", "kilde": "testdata"}
-                    ]
-                    
-                    # Sjekk om det allerede finnes dokumenter i databasen
-                    from rag.vectorstore import embeddings_collection
-                    doc_count = embeddings_collection.count_documents({})
-                    
-                    if doc_count == 0:
-                        print("Ingen dokumenter funnet i databasen, legger til testdokumenter...")
-                        ids = add_texts_to_vectorstore(test_texts, test_metadata, embedding_function)
-                        print(f"La til {len(ids)} testdokumenter i databasen med IDs: {ids}")
-                    else:
-                        print(f"Fant {doc_count} dokumenter i databasen, hopper over innlegging av testdata.")
-                    
-                except Exception as e:
-                    print(f"Feil ved innlegging av testdata: {str(e)}")
-                    import traceback
-                    print(traceback.format_exc())
-            else:
-                st.session_state.rag_error = error_msg
-                st.error("Kunne ikke initialisere kunnskapsbasen.")
-                print(f"RAG initialization failed: {error_msg}")
+            except Exception as e:
+                error_msg = str(e)
+                st.error(f"Kunne ikke initialisere RAG-komponenter: {error_msg}")
+                st.stop()  # Bruk st.stop() i stedet for return
     
-    st.title("Spør om ALS")
+    # Initialize chat history if not already done
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
     
-    # Informativ velkomsttekst
-    st.markdown("""
-    ### Velkommen til kunnskapsdatabasen for ALS
-    
-    Her kan du stille spørsmål og få svar basert på erfaringer og kunnskap som er delt av andre 
-    pasienter, pårørende og fagpersoner. Systemet kombinerer denne kunnskapen med generell 
-    informasjon for å gi deg mest mulig relevante og nyttige svar.
-    
-    Prøv å stille konkrete spørsmål om symptomer, hjelpemidler, daglige utfordringer, eller 
-    andre aspekter ved å leve med ALS. Jo mer spesifikk du er, desto bedre svar vil du få.
-    
-    *Husk at denne tjenesten ikke erstatter medisinsk rådgivning, men kan være et supplement til annen informasjon.*
-    """)
-    
-    # Display chat messages from history on app rerun
+    # Display chat messages
     for message in st.session_state.messages:
-        with st.chat_message(message["role"], avatar=USER_AVATAR_DATA_URL if message["role"] == "user" else ASSISTANT_AVATAR_DATA_URL):
+        avatar = USER_AVATAR_DATA_URL if message["role"] == "user" else ASSISTANT_AVATAR_DATA_URL
+        with st.chat_message(message["role"], avatar=avatar):
             st.markdown(message["content"])
     
-    # React to user input
-    if prompt := st.chat_input("Skriv inn ditt spørsmål..."):
+    # Accept user input
+    if prompt := st.chat_input("Skriv inn ditt spørsmål...", key="mobile_optimized_input"):
         # Display user message in chat message container
         st.chat_message("user", avatar=USER_AVATAR_DATA_URL).markdown(prompt)
         
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
-
-        # Prepare for assistant response
+        
+        # Generate and display assistant response
         with st.chat_message("assistant", avatar=ASSISTANT_AVATAR_DATA_URL):
-            with st.spinner("Tenker..."):
-                try:
-                    # Opprett ny retriever og chain for hver spørring
-                    print("Henter embedding funksjon fra session state...")
-                    embedding_function = st.session_state.embedding_function
-                    
-                    # Test embedding function
-                    print("Tester embedding function...")
-                    test_embedding = embedding_function("Dette er en test")
-                    print(f"Test embedding generert med lengde: {len(test_embedding) if test_embedding else 'None'}")
-                    
-                    print("Oppretter retriever...")
-                    retriever = get_retriever(embedding_function, k=20)
-                    
-                    print("Oppretter RAG chain...")
-                    chain = get_rag_chain(retriever)
-                    
-                    print(f"Henter relevante dokumenter for spørsmålet: {prompt}")
-                    relevant_docs = retriever.get_relevant_documents(prompt)
-                    print(f"Fant {len(relevant_docs)} relevante dokumenter")
-                    for i, doc in enumerate(relevant_docs[:3]):  # Vis bare de første 3
-                        print(f"Dokument {i+1}: {doc.get('page_content', '')[:100]}...")
-                    
-                    # Generate response
-                    print("Genererer svar med RAG chain...")
-                    response = chain.invoke({"input": prompt})
-                    answer = response.get("answer", "Jeg kunne ikke generere et svar basert på tilgjengelig informasjon.")
-                    
-                    # Formater svaret (markdown støttes)
-                    st.markdown(answer)
-                    
-                    # Legg til assistentsvar i chathistorikk
-                    st.session_state.messages.append({
-                        "role": "assistant", 
-                        "content": answer
-                    })
-                
-                except Exception as e:
-                    error_msg = f"Det oppstod en feil: {str(e)}"
-                    st.error(error_msg)
-                    import traceback
-                    error_trace = traceback.format_exc()
-                    print(f"Detaljert feilsporing: {error_trace}")
-                    st.error(error_trace)
-                    
-                    # Legg til feilmelding i chathistorikk
-                    st.session_state.messages.append({
-                        "role": "assistant", 
-                        "content": "Beklager, jeg opplevde en teknisk feil. Vennligst prøv igjen senere."
-                    })
+            # Initialize a placeholder for streaming response
+            message_placeholder = st.empty()
+            full_response = ""
+            
+            try:
+                # Get streaming response from RAG chain
+                if st.session_state.rag_chain:
+                    with st.spinner("Henter informasjon..."):
+                        response = st.session_state.rag_chain.invoke(prompt)
+                        
+                        # Display full response
+                        full_response = response
+                        message_placeholder.markdown(full_response)
+                        
+                        # Add assistant response to chat history
+                        st.session_state.messages.append({"role": "assistant", "content": full_response})
+                else:
+                    message_placeholder.error("RAG-systemet er ikke initialisert. Vennligst prøv igjen senere.")
+            except Exception as e:
+                error_message = f"Beklager, jeg kunne ikke svare på spørsmålet ditt akkurat nå: {str(e)}"
+                message_placeholder.error(error_message)
+                st.session_state.messages.append({"role": "assistant", "content": error_message})
+                print(f"Error generating response: {traceback.format_exc()}")
 
 elif page == "Bidra med kunnskap":
     st.header("Del dine erfaringer")
@@ -934,37 +930,47 @@ elif page == "Se bidrag":
         # Sorter etter dato
         filtered_contributions.sort(key=lambda x: x.timestamp if hasattr(x, 'timestamp') else datetime.min, reverse=True)
         
-        # Vis bidrag i en grid
-        for i in range(0, len(filtered_contributions), 3):
-            cols = st.columns(3)
-            for j in range(3):
-                if i + j < len(filtered_contributions):
-                    contribution = filtered_contributions[i + j]
-                    with cols[j]:
-                        # Lag en fin kortvisning for bidraget
-                        title_display = getattr(contribution, 'title', 'Bidrag') or f"Bidrag om {contribution.problem[:20]}..."
-                        
-                        with st.container(border=True):
-                            st.markdown(f"### {title_display}")
-                            
-                            # Vis metadata
-                            if hasattr(contribution, 'category') and contribution.category:
-                                st.markdown(f"**Kategori:** {contribution.category}")
-                            
-                            if hasattr(contribution, 'difficulty_level') and contribution.difficulty_level:
-                                st.markdown(f"**Vanskelighetsgrad:** {contribution.difficulty_level}")
-                            
-                            # Vis sammendrag eller start på problem
-                            if hasattr(contribution, 'summary') and contribution.summary:
-                                st.markdown(f"*{contribution.summary[:100]}...*" if len(contribution.summary) > 100 else f"*{contribution.summary}*")
-                            else:
-                                st.markdown(f"*{contribution.problem[:100]}...*" if len(contribution.problem) > 100 else f"*{contribution.problem}*")
-                            
-                            # Se detaljer-knapp
-                            if st.button(f"Se detaljer", key=f"details_{i+j}"):
-                                st.session_state.selected_contribution = contribution.id
+        # Vis bidrag i en responsiv grid
+        st.markdown('<div class="contribution-grid">', unsafe_allow_html=True)
         
-        # Vis detaljert visning hvis et bidrag er valgt
+        for contribution in filtered_contributions:
+            # Lag en fin kortvisning for bidraget
+            title_display = getattr(contribution, 'title', 'Bidrag') or f"Bidrag om {contribution.problem[:20]}..."
+            
+            # Kategorimerking med farge
+            category = getattr(contribution, 'category', 'annet')
+            content_type = getattr(contribution, 'content_type', 'annet')
+            
+            # Generer HTML for kortet med responsiv styling
+            card_html = f"""
+            <div class="card type-{content_type}" onclick="selectContribution('{contribution.id}')">
+                <h3>{title_display}</h3>
+                <div class="category-chip category-{category}">{category}</div>
+                <p>{getattr(contribution, 'summary', '')[:100]}...</p>
+                <div style="font-size: 0.8rem; color: #666;">
+                    {getattr(contribution, 'contributor_name', 'Anonym')} | 
+                    {getattr(contribution, 'timestamp', '').strftime('%d.%m.%Y') if hasattr(contribution, 'timestamp') and contribution.timestamp else ''}
+                </div>
+            </div>
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
+            
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Legg til JavaScript for å håndtere klikk på bidrag
+        js = """
+        <script>
+        function selectContribution(id) {
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: id
+            }, '*');
+        }
+        </script>
+        """
+        st.markdown(js, unsafe_allow_html=True)
+        
+        # Håndtere valg av bidrag via Streamlit-callback
         if hasattr(st.session_state, 'selected_contribution'):
             selected_id = st.session_state.selected_contribution
             selected = next((c for c in filtered_contributions if c.id == selected_id), None)
