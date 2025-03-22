@@ -334,6 +334,9 @@ class CustomRAGChain:
         elif query_type == "EMOSJONELL":
             temperature = 0.7  # Høyere temperatur for mer empatiske svar
             max_tokens = 1000  # Plass for mer empatiske og støttende svar
+        elif query_type == "FORSKNING":
+            temperature = 0.3  # Balansert temperatur for forskningsrelaterte spørsmål
+            max_tokens = 1200  # Mer plass for detaljerte forskningsinformasjon
         else:
             # Default verdier
             temperature = 0.3
@@ -407,6 +410,17 @@ class CustomRAGChain:
                              "statistikk", "data", "forskjell mellom", "sammenheng med", "genet", 
                              "mutasjon", "sod1"]
         
+        research_indicators = ["forskning", "studie", "studier", "klinisk forsøk", "kliniske forsøk", 
+                              "medisinsk forsøk", "medisinske forsøk", "forskningsprosjekt", 
+                              "forskningsprosjekter", "pågående forskning", "behandlingsstudie", 
+                              "behandlingsstudier", "utprøving", "legemiddel", "fase", "resultater", 
+                              "funn", "publikasjon", "artikkel", "vitenskapelig", "vitenskap", 
+                              "undersøkelse", "undersøkelser", "litteratur", "evidens", "bevis", 
+                              "metode", "metodikk", "eksperiment", "eksperimenter", "deltaker", 
+                              "deltakere", "pasient", "pasienter", "protokoll", "protokoller",
+                              "tofersen", "gain", "no-als", "mastinib", "riluzol", "edaravone",
+                              "als forskning", "als-forskning", "effekt", "bivirkninger", "resultat"]
+        
         personal_indicators = ["erfaring", "personlig", "opplevelse", "hvordan håndterer", 
                               "mestring", "noen som har", "andre med", "eksempel på", 
                               "historier om", "dele", "fortelle om", "hvordan var det", 
@@ -430,18 +444,20 @@ class CustomRAGChain:
         
         # Telle indikatorer for hver type
         factual_count = sum(1 for indicator in factual_indicators if indicator.lower() in query_lower)
+        research_count = sum(1 for indicator in research_indicators if indicator.lower() in query_lower)
         personal_count = sum(1 for indicator in personal_indicators if indicator.lower() in query_lower)
         advice_count = sum(1 for indicator in advice_indicators if indicator.lower() in query_lower)
         emotional_count = sum(1 for indicator in emotional_indicators if indicator.lower() in query_lower)
         
         # Vektede scorer for å prioritere ulike typer
         factual_score = factual_count
+        research_score = research_count * 1.5  # Gi høyere vekt til forskningsrelaterte spørsmål
         personal_score = personal_count * 1.2  # Gi litt høyere vekt til personlige erfaringer
-        advice_score = advice_count * 1.1    # Gi litt høyere vekt til råd
+        advice_score = advice_count * 1.1     # Gi litt høyere vekt til råd
         emotional_score = emotional_count * 1.3  # Gi høyere vekt til emosjonelle spørsmål
         
         # Bestem type basert på høyeste score
-        max_score = max(factual_score, personal_score, advice_score, emotional_score)
+        max_score = max(factual_score, research_score, personal_score, advice_score, emotional_score)
         
         if max_score == 0:
             # Hvis ingen spesifikke indikatorer, bruk defaultverdier basert på kompleksitet
@@ -451,6 +467,8 @@ class CustomRAGChain:
                 query_type = "RÅD"
             else:
                 query_type = "PERSONLIG_ERFARING"
+        elif max_score == research_score:
+            query_type = "FORSKNING"  # Ny kategori for forskningsrelaterte spørsmål
         elif max_score == factual_score:
             query_type = "FAKTABASERT"
         elif max_score == personal_score:
@@ -461,7 +479,7 @@ class CustomRAGChain:
             query_type = "EMOSJONELL"
             
         logging.info(f"Analysert spørring '{query}' - Kompleksitet: {complexity}, Type: {query_type}")
-        logging.info(f"Score: Faktabasert={factual_score}, Personlig={personal_score}, Råd={advice_score}, Emosjonell={emotional_score}")
+        logging.info(f"Score: Faktabasert={factual_score}, Forskning={research_score}, Personlig={personal_score}, Råd={advice_score}, Emosjonell={emotional_score}")
         
         return complexity, query_type
 
@@ -564,6 +582,14 @@ For emosjonelle eller støtterelaterte spørsmål:
 - Tilby støtte og forståelse før praktiske råd
 - Inkluder eksempler på mestringsstrategier
 - Nevn støttegrupper og ressurser som "Alltid litt sterkere"
+"""
+        elif query_type == "FORSKNING":
+            system_prompt += """
+For forskningsrelaterte spørsmål:
+- Presenter en detaljert oversikt over relevant forskning
+- Inkluder informasjon om studier, resultater og konklusjoner
+- Fremhev viktige funn og implikasjoner for ALS-pasienter
+- Tilby ressurser for videre lesning og informasjon
 """
         else:
             system_prompt += """
